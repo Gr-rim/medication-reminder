@@ -1,23 +1,52 @@
+// lib/features/medication/screens/add_med_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:medication_reminder/features/medication/models/medication.dart';
 import 'package:medication_reminder/features/medication/repositories/med_repository.dart';
 import 'package:medication_reminder/core/constants/app_constants.dart';
+import 'package:medication_reminder/services/notification_service.dart';
 
-class AddMedScreen extends ConsumerStatefulWidget {
-  const AddMedScreen({super.key});
+class AddMedScreen extends StatefulWidget {
+  final Medication? medication; // null = add mode, non-null = edit mode
+
+  const AddMedScreen({super.key, this.medication});
 
   @override
-  ConsumerState<AddMedScreen> createState() => _AddMedScreenState();
+  State<AddMedScreen> createState() => _AddMedScreenState();
 }
 
-class _AddMedScreenState extends ConsumerState<AddMedScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _dosageController = TextEditingController(); // ✅ Critical!
-  final List<TimeOfDay> _selectedTimes = [TimeOfDay(hour: 8, minute: 0)];
-  String _selectedFrequency = FrequencyOptions.daily;
+class _AddMedScreenState extends State<AddMedScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _dosageController;
+  late final List<TimeOfDay> _selectedTimes;
+  late String _selectedFrequency;
+
+  bool get isEditing => widget.medication != null;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (isEditing) {
+      final med = widget.medication!;
+      _nameController = TextEditingController(text: med.name);
+      _dosageController = TextEditingController(text: med.dosage);
+      _selectedFrequency = med.frequency;
+      _selectedTimes = med.times.map((t) {
+        final parts = t.split(':');
+        return TimeOfDay(
+          hour: int.parse(parts[0]),
+          minute: int.parse(parts[1]),
+        );
+      }).toList();
+    } else {
+      _nameController = TextEditingController();
+      _dosageController = TextEditingController();
+      _selectedTimes = [TimeOfDay(hour: 8, minute: 0)];
+      _selectedFrequency = FrequencyOptions.daily;
+    }
+  }
 
   @override
   void dispose() {
@@ -26,18 +55,90 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
     super.dispose();
   }
 
-  // Convert TimeOfDay to 12-hour string for display
   String _formatTime12(TimeOfDay time) {
     final period = time.hour >= 12 ? 'PM' : 'AM';
     final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
     return '${hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} $period';
   }
 
+  Future<void> _saveMedication() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final times24 = _selectedTimes
+        .map(
+          (t) =>
+              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+        )
+        .toList();
+
+    Medication med;
+    if (isEditing) {
+      // Update existing
+      med = Medication(
+        id: widget.medication!.id,
+        name: _nameController.text.trim(),
+        dosage: _dosageController.text.trim(),
+        times: times24,
+        frequency: _selectedFrequency,
+      );
+    } else {
+      // Create new
+      final id = DateTime.now().millisecondsSinceEpoch.toString();
+      med = Medication(
+        id: id,
+        name: _nameController.text.trim(),
+        dosage: _dosageController.text.trim(),
+        times: times24,
+        frequency: _selectedFrequency,
+      );
+    }
+
+    await MedRepository().addMed(med);
+
+    // Reschedule notifications
+    if (!kIsWeb) {
+      // Cancel old notifications if editing
+      if (isEditing) {
+        // Optional: cancel old notifications (advanced)
+        // For MVP, just re-schedule — OS handles duplicates
+      }
+
+      for (int i = 0; i < times24.length; i++) {
+        final timeStr = times24[i];
+        final parts = timeStr.split(':');
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        final notificationId = (med.id.hashCode.abs() + i) % 2100000000;
+
+        await NotificationService.scheduleDailyReminder(
+          id: notificationId,
+          title: 'Time to take ${med.name}',
+          body: med.dosage,
+          hour: hour,
+          minute: minute,
+        );
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isEditing ? 'Medication updated!' : 'Medication saved!',
+          ),
+        ),
+      );
+    }
+    context.go('/');
+  }
+
+  final _formKey = GlobalKey<FormState>();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add Medication'),
+        title: Text(isEditing ? 'Edit Medication' : 'Add Medication'),
         backgroundColor: Colors.green,
       ),
       body: Padding(
@@ -47,7 +148,6 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // 🔹 Medicine Name (REQUIRED — was missing!)
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
@@ -58,7 +158,6 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🔹 Dosage
               TextFormField(
                 controller: _dosageController,
                 decoration: const InputDecoration(
@@ -69,7 +168,6 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🔹 Frequency
               DropdownButtonFormField<String>(
                 value: _selectedFrequency,
                 decoration: const InputDecoration(
@@ -89,7 +187,6 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 🔹 Dose Times
               const Text(
                 'Dose Times (12-hour format)',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -134,44 +231,13 @@ class _AddMedScreenState extends ConsumerState<AddMedScreen> {
 
               const SizedBox(height: 24),
 
-              // 🔹 Buttons
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () async {
-                        if (_formKey.currentState!.validate()) {
-                          final id = DateTime.now().millisecondsSinceEpoch
-                              .toString();
-                          final times24 = _selectedTimes
-                              .map(
-                                (t) =>
-                                    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-                              )
-                              .toList();
-
-                          final med = Medication(
-                            id: id,
-                            name: _nameController.text.trim(),
-                            dosage: _dosageController.text.trim(),
-                            times: times24,
-                            frequency: _selectedFrequency,
-                          );
-
-                          await MedRepository().addMed(med);
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Medication saved!'),
-                              ),
-                            );
-                          }
-                          context.go('/');
-                        }
-                      },
+                      onPressed: _saveMedication,
                       icon: const Icon(Icons.check),
-                      label: const Text('Save'),
+                      label: Text(isEditing ? 'Update' : 'Save'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                       ),

@@ -8,21 +8,21 @@ Built as a offline first, habit tracking tool for reminding user of their medica
 
 ## ✅ Current Features (Working)
 
-- **Add Medications**: Enter medicine name, dosage, frequency (Daily/Weekly/Bi-Weekly/Custom), and multiple 12-hour dose times.
+- **Medication Management**: Add, Edit, Delete medicine name, dosage, frequency (Daily/Weekly/Bi-Weekly), and multiple 12-hour dose times.
 - **Local Persistence**: All data saved offline using **Hive** (No internet required).
 - **Clean UI**: Intuitive form + home screen with swipe-to-delete.
 - **Responsive Design**: Works on mobile & tablet.
+- **Notification**: Reminders at scheduled dose times (Android/iOS).
+- **Mark doses**: As Taken / Missed
+- **Weekly adherence percentage**: Percentage of medication taken displayedf right at home screen
 
 ---
 
 ## 🚧 Coming Soon
 
-- Notification reminders at scheduled dose times (Android/iOS).
-- Mark doses as **Taken / Missed**
-- Weekly **adherence percentage** & streaks
+- Adherence streaks
 - Export data as CSV
 - Accessibility enhancements (large text, high contrast)
-- Edit existing medications
 
 > *Note: Web support is limited (no notifications). Best experienced on Android/iOS.*
 
@@ -77,4 +77,3 @@ Built to address a core challenge in chronic care: **medication non-adherence**.
 ## 📄 License
 
 MIT License — feel free to learn, fork, and improve!
-```
